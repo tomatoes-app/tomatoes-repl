@@ -7,19 +7,18 @@ module Lib (
 import Control.Applicative ((<|>))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State (StateT(runStateT), modify, gets)
-import Data.Aeson (FromJSON, Value(Object), parseJSON, (.:), eitherDecode)
 import Data.Attoparsec.ByteString (takeTill)
 import Data.Attoparsec.ByteString.Char8 (Parser, string, parseOnly, space,
   isEndOfLine)
 import Data.ByteString (ByteString)
 import Data.ByteString.Char8 (pack)
-import Data.Monoid ((<>))
-import Network.HTTP.Client (Manager, Request(method, requestBody),
-  RequestBody(RequestBodyBS), Response(responseBody), parseRequest, newManager,
-  defaultManagerSettings, httpLbs)
+import Network.HTTP.Client (Manager, newManager, defaultManagerSettings)
 import System.Console.Haskeline (InputT, runInputT, defaultSettings,
   getInputLine, outputStrLn)
 import System.Exit (exitSuccess)
+
+import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
+  createSession)
 
 
 data Command = Exit | Help | GithubAuth ByteString
@@ -34,12 +33,6 @@ instance Show TomatoesCLIState where
   show (TomatoesCLIState token _) = show token
 
 type TomatoesT = StateT TomatoesCLIState IO
-
-data TomatoesPOSTSessionResponse = TomatoesPOSTSessionResponse String
-
-instance FromJSON TomatoesPOSTSessionResponse where
-  parseJSON (Object v) = TomatoesPOSTSessionResponse <$> v .: "token"
-  parseJSON s = fail $ "Can't parse " ++ show s
 
 
 cli :: IO ()
@@ -92,21 +85,11 @@ execute (Left _) = do
   execute (Right Help)
 execute (Right Exit) = liftIO exitSuccess
 execute (Right Help) = liftIO $ putStrLn "Available commands: help, exit, quit"
-execute (Right (GithubAuth token)) =
-  postSession token
-
-
-postSession :: ByteString -> TomatoesT ()
-postSession githubToken = do
+execute (Right (GithubAuth githubToken)) = do
   manager <- gets httpManager
-  initRequest <- parseRequest "http://tomato.es/api/session"
-  let request = initRequest {
-      method = "POST",
-      requestBody = RequestBodyBS $ "provider=github&access_token=" <> githubToken
-    }
-  response <- liftIO $ httpLbs request manager
-  case eitherDecode (responseBody response) of
-    Left err -> liftIO . putStrLn $ "Error while decoding response: " ++ err
-    Right (TomatoesPOSTSessionResponse token) -> do
+  response <- liftIO $ createSession manager githubToken
+  case response of
+    Left err -> liftIO . putStrLn $ "Error : " ++ err
+    Right (CreateSessionResponse token) -> do
       modify $ \tomatoesState -> tomatoesState {tomatoesToken = Just (pack token)}
       liftIO . putStrLn $ "Success!"
