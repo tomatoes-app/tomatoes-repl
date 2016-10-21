@@ -4,12 +4,9 @@ module Lib (
   cli
 ) where
 
-import Control.Applicative ((<|>))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State (StateT(runStateT), modify, gets)
-import Data.Attoparsec.ByteString (takeTill)
-import Data.Attoparsec.ByteString.Char8 (Parser, string, parseOnly, space,
-  isEndOfLine)
+import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Data.ByteString (ByteString)
 import Data.ByteString.Char8 (pack)
 import Network.HTTP.Client (Manager, newManager, defaultManagerSettings)
@@ -19,9 +16,9 @@ import System.Exit (exitSuccess)
 
 import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
   createSession)
+import Tomatoes.Parser (commandParser)
+import Tomatoes.Types (Command(Exit, Help, GithubAuth))
 
-
-data Command = Exit | Help | GithubAuth ByteString
 
 data TomatoesCLIState = TomatoesCLIState {
     tomatoesToken :: Maybe ByteString,
@@ -57,26 +54,6 @@ getInitialState = TomatoesCLIState Nothing <$> newManager defaultManagerSettings
 
 prompt :: String
 prompt = "🍅 % "
-
-
-commandParser :: Parser Command
-commandParser = exitParser <|> helpParser <|> authParser
-
-
-exitParser :: Parser Command
-exitParser = (string "exit" <|> string "quit") >> return Exit
-
-
-helpParser :: Parser Command
-helpParser = string "help" >> return Help
-
-
-authParser :: Parser Command
-authParser = string "auth" >> space >> githubAuthParser
-
-
-githubAuthParser :: Parser Command
-githubAuthParser = string "github" >> space >> GithubAuth <$> takeTill isEndOfLine
 
 
 execute :: Either String Command -> TomatoesT ()
