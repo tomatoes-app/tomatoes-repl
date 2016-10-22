@@ -4,8 +4,10 @@ module Lib (
   cli
 ) where
 
+import Control.Monad (void)
+import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.State (StateT(runStateT), modify, gets)
+import Control.Monad.State.Strict (StateT(runStateT), modify, gets)
 import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Data.ByteString (ByteString)
 import Data.ByteString.Char8 (pack)
@@ -29,23 +31,22 @@ data TomatoesCLIState = TomatoesCLIState {
 instance Show TomatoesCLIState where
   show (TomatoesCLIState token _) = show token
 
-type TomatoesT = StateT TomatoesCLIState IO
+type TomatoesT = InputT (StateT TomatoesCLIState IO)
 
 
 cli :: IO ()
 cli = do
     initialState <- getInitialState
-    runInputT defaultSettings $ loop initialState
+    void $ runStateT (runInputT defaultSettings loop) initialState
   where
-    loop :: TomatoesCLIState -> InputT IO ()
-    loop state = do
+    loop :: TomatoesT ()
+    loop = do
       mInput <- getInputLine prompt
       case mInput of
         Nothing -> return ()
         Just input -> do
-          (_, newState) <- liftIO $ runStateT (execute $ parseOnly commandParser (pack input)) state
-          outputStrLn $ "Current state: " ++ show newState
-          loop newState
+          execute $ parseOnly commandParser (pack input)
+          loop
 
 
 getInitialState :: IO TomatoesCLIState
@@ -63,10 +64,10 @@ execute (Left _) = do
 execute (Right Exit) = liftIO exitSuccess
 execute (Right Help) = liftIO $ putStrLn "Available commands: help, exit, quit"
 execute (Right (GithubAuth githubToken)) = do
-  manager <- gets httpManager
+  manager <- lift $ gets httpManager
   response <- liftIO $ createSession manager githubToken
   case response of
     Left err -> liftIO . putStrLn $ "Error : " ++ err
     Right (CreateSessionResponse token) -> do
-      modify $ \tomatoesState -> tomatoesState {tomatoesToken = Just (pack token)}
+      lift . modify $ \tomatoesState -> tomatoesState {tomatoesToken = Just (pack token)}
       liftIO . putStrLn $ "Success!"
