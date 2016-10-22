@@ -13,7 +13,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Char8 (pack)
 import Network.HTTP.Client (Manager, newManager, defaultManagerSettings)
 import System.Console.Haskeline (InputT, runInputT, defaultSettings,
-  getInputLine, outputStrLn)
+  getInputLine, outputStrLn, getPassword)
 import System.Exit (exitSuccess)
 
 import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
@@ -63,11 +63,15 @@ execute (Left _) = do
   execute (Right Help)
 execute (Right Exit) = liftIO exitSuccess
 execute (Right Help) = liftIO $ putStrLn "Available commands: help, exit, quit"
-execute (Right (GithubAuth githubToken)) = do
-  manager <- lift $ gets httpManager
-  response <- liftIO $ createSession manager githubToken
-  case response of
-    Left err -> liftIO . putStrLn $ "Error : " ++ err
-    Right (CreateSessionResponse token) -> do
-      lift . modify $ \tomatoesState -> tomatoesState {tomatoesToken = Just (pack token)}
-      liftIO . putStrLn $ "Success!"
+execute (Right GithubAuth) = do
+  mGithubToken <- getPassword (Just '*') "GitHub token: "
+  case mGithubToken of
+    Nothing -> execute (Right GithubAuth)
+    Just githubToken -> do
+      manager <- lift $ gets httpManager
+      response <- liftIO $ createSession manager (pack githubToken)
+      case response of
+        Left err -> liftIO . putStrLn $ "Error : " ++ err
+        Right (CreateSessionResponse token) -> do
+          lift . modify $ \tomatoesState -> tomatoesState {tomatoesToken = Just (pack token)}
+          liftIO . putStrLn $ "Success!"

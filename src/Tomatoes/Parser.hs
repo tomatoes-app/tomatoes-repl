@@ -5,8 +5,7 @@ module Tomatoes.Parser (
 ) where
 
 import Control.Applicative ((<|>))
-import Data.Attoparsec.ByteString (takeTill)
-import Data.Attoparsec.ByteString.Char8 (Parser, string, space, isEndOfLine)
+import Data.Attoparsec.ByteString.Char8 (Parser, string, space)
 
 import Tomatoes.Types (Command(Exit, Help, GithubAuth))
 
@@ -28,4 +27,4 @@ authParser = string "auth" >> space >> githubAuthParser
 
 
 githubAuthParser :: Parser Command
-githubAuthParser = string "github" >> space >> GithubAuth <$> takeTill isEndOfLine
+githubAuthParser = string "github" >> return GithubAuth
