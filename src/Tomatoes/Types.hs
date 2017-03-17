@@ -3,4 +3,4 @@ module Tomatoes.Types (
 ) where
 
 
-data Command = Exit | Help | GithubAuth
+data Command = Exit | Help | GithubAuth | StartPomodoro
