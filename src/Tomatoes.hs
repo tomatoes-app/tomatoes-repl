@@ -57,6 +57,7 @@ cli = do
           loop
 
 
+-- TODO: notify the user when a local configuration file has been found.
 -- | Generates the initial state of the CLI. It tries to read a Tomatoes API
 -- token from a `.tomatoes` file in the `$HOME` directory.
 getInitialState :: IO TomatoesCLIState
