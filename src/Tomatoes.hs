@@ -41,6 +41,7 @@ instance Show TomatoesCLIState where
 type TomatoesT = InputT (StateT TomatoesCLIState IO)
 
 
+-- | Reads a configuration file and starts the Tomatoes CLI.
 cli :: IO ()
 cli = do
     initialState <- getInitialState
@@ -56,6 +57,8 @@ cli = do
           loop
 
 
+-- | Generates the initial state of the CLI. It tries to read a Tomatoes API
+-- token from a `.tomatoes` file in the `$HOME` directory.
 getInitialState :: IO TomatoesCLIState
 getInitialState = do
   eTomatoesToken <- readConfig

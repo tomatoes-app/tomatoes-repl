@@ -12,7 +12,7 @@ data Command = Exit | Help | GithubAuth | StartPomodoro
 instance Show Command where
   show Exit = "exit (quit)"
   show Help = "help (h, ?)"
-  show GithubAuth = "github"
+  show GithubAuth = "auth github"
   show StartPomodoro = "pomodoro (p)"
 
 
