@@ -25,7 +25,8 @@ import System.Process (createProcess, proc)
 import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
   createSession, createTomato)
 import Tomatoes.Parser (commandParser)
-import Tomatoes.Types (Command(Exit, Help, GithubAuth, StartPomodoro))
+import Tomatoes.Types (Command(Exit, Help, GithubAuth, StartPomodoro),
+  availableCommands)
 
 
 data TomatoesCLIState = TomatoesCLIState {
@@ -79,11 +80,13 @@ prompt = "🍅 % "
 
 
 execute :: Either String Command -> TomatoesT ()
-execute (Left _) = do
-  outputStrLn "Command not found"
-  execute (Right Help)
+execute (Left err) = do
+  outputStrLn $ "Error: " ++ show err
+  outputStrLn $ "Available commands: " ++ availableCommands
 execute (Right Exit) = liftIO exitSuccess
-execute (Right Help) = outputStrLn "Available commands: help, exit, quit"
+execute (Right Help) = do
+  outputStrLn $ "Available commands: " ++ availableCommands
+  outputStrLn "TODO: put a more detailed description for each command..."
 execute (Right GithubAuth) = do
   mGithubToken <- getPassword (Just '*') "GitHub token: "
   case mGithubToken of
