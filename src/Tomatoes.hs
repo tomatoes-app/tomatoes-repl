@@ -101,20 +101,28 @@ execute (Right GithubAuth) = do
         Left err -> outputStrLn $ "Error : " ++ err
         Right (CreateSessionResponse token) -> do
           lift . modify $ \tomatoesState -> tomatoesState {tomatoesToken = Just (BS8.pack token)}
+          -- TODO: store the Tomatoes API token in a local configuration file
           outputStrLn "Success!"
 execute (Right StartPomodoro) =
     handle (\Interrupt -> outputStrLn "Cancelled.") $ withInterrupt runPomodoro
   where
     tick = do
+      -- TODO: handle output in a separate thread to avoid increasing the amount
+      -- of time spent running a pomodoro
       outputStr "#"
       liftIO $ threadDelay 1000000
     tickMinute = do
       replicateM_ 60 tick
       outputStr "\n"
     notify message =
+      -- TODO: choose the correct command according to the OS
+      -- TODO: handle errors, example: the case when a command to notify the
+      -- user is not present
       void . liftIO $ createProcess (proc "terminal-notifier" ["-message", message])
     runPomodoro = do
       replicateM_ 25 tickMinute
+      -- TODO: keep notifying the user every 30 seconds until the user accepts
+      -- creates the new tomato
       notify "Pomodoro finished"
       mToken <- lift $ gets tomatoesToken
       case mToken of
