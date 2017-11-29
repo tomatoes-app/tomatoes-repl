@@ -78,10 +78,18 @@ getInitialState = do
       | otherwise = c : removeSpaces cs
 
 
+-- TODO: notify user in case the session is not authenticated (it won't be
+-- able to store tomatoes)
+-- | The default prompt.
 prompt :: String
 prompt = "🍅 % "
 
 
+-- TODO: send notification if after a pause the user doesn't start a new
+-- pomodoro
+-- TODO: handle pauses
+-- TODO: handle empty commands: it shouldn't print anything apart from a new
+-- prompt
 execute :: Either String Command -> TomatoesT ()
 execute (Left _) = do
   outputStrLn "Parsing error"
