@@ -80,8 +80,8 @@ prompt = "🍅 % "
 
 
 execute :: Either String Command -> TomatoesT ()
-execute (Left err) = do
-  outputStrLn $ "Error: " ++ show err
+execute (Left _) = do
+  outputStrLn "Parsing error"
   outputStrLn $ "Available commands: " ++ availableCommands
 execute (Right Exit) = liftIO exitSuccess
 execute (Right Help) = do
