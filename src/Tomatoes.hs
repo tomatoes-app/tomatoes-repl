@@ -118,7 +118,7 @@ execute (Right StartPomodoro) =
       -- TODO: choose the correct command according to the OS
       -- TODO: handle errors, example: the case when a command to notify the
       -- user is not present
-      void . liftIO $ createProcess (proc "terminal-notifier" ["-message", message])
+      void . liftIO $ createProcess (proc "notify-send" ["-t", "10", "Tomatoes", message])
     runPomodoro = do
       replicateM_ 25 tickMinute
       -- TODO: keep notifying the user every 30 seconds until the user accepts
