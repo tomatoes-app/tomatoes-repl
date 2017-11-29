@@ -1,6 +1,6 @@
 module Main where
 
-import Lib (cli)
+import Tomatoes (cli)
 
 main :: IO ()
 main = cli
