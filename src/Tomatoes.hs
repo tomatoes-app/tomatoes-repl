@@ -13,8 +13,8 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (StateT(runStateT), modify, gets)
 import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Data.ByteString (ByteString)
-import Data.ByteString.Char8 (pack)
 import Network.HTTP.Client (Manager, newManager, defaultManagerSettings)
+import qualified Data.ByteString.Char8 as BS8
 import System.Console.Haskeline (InputT, Interrupt(Interrupt), runInputT,
   defaultSettings, getInputLine, outputStrLn, outputStr, getPassword,
   withInterrupt, handle)
@@ -52,7 +52,7 @@ cli = do
       case mInput of
         Nothing -> return ()
         Just input -> do
-          execute $ parseOnly commandParser (pack input)
+          execute $ parseOnly commandParser (BS8.pack input)
           loop
 
 
@@ -62,7 +62,7 @@ getInitialState = do
   case eTomatoesToken of
     Left _ -> TomatoesCLIState Nothing <$> newManager defaultManagerSettings
     Right token ->
-      TomatoesCLIState (Just . pack $ removeSpaces token)
+      TomatoesCLIState (Just . BS8.pack $ removeSpaces token)
         <$> newManager defaultManagerSettings
   where
     readConfig :: IO (Either SomeException String)
@@ -93,11 +93,11 @@ execute (Right GithubAuth) = do
     Nothing -> execute (Right GithubAuth)
     Just githubToken -> do
       manager <- lift $ gets httpManager
-      response <- liftIO $ createSession manager (pack githubToken)
+      response <- liftIO $ createSession manager (BS8.pack githubToken)
       case response of
         Left err -> outputStrLn $ "Error : " ++ err
         Right (CreateSessionResponse token) -> do
-          lift . modify $ \tomatoesState -> tomatoesState {tomatoesToken = Just (pack token)}
+          lift . modify $ \tomatoesState -> tomatoesState {tomatoesToken = Just (BS8.pack token)}
           outputStrLn "Success!"
 execute (Right StartPomodoro) =
     handle (\Interrupt -> outputStrLn "Cancelled.") $ withInterrupt runPomodoro
@@ -122,7 +122,7 @@ execute (Right StartPomodoro) =
             Nothing -> outputStrLn "no input..."
             Just tags -> do
               manager <- lift $ gets httpManager
-              response <- liftIO $ createTomato manager token (pack tags)
+              response <- liftIO $ createTomato manager token (BS8.pack tags)
               case response of
                 Left err -> outputStrLn $ "Error: " ++ err
                 Right _ -> outputStrLn "Tomato saved."
