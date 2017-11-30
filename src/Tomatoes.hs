@@ -10,7 +10,6 @@ import Control.Concurrent (threadDelay, forkIO)
 import Control.Concurrent.STM (TVar, newTVarIO, atomically, readTVar,
   modifyTVar)
 import Control.Exception (SomeException, try)
-import Data.Maybe (isNothing)
 import Control.Monad (void, when)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class (liftIO)
@@ -19,7 +18,7 @@ import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Data.ByteString (ByteString)
 import Data.Time (FormatTime, NominalDiffTime, TimeOfDay, midnight, formatTime,
   defaultTimeLocale, timeToTimeOfDay, getCurrentTime, diffUTCTime,
-  secondsToDiffTime, UTCTime)
+  secondsToDiffTime)
 import Network.HTTP.Client (Manager, newManager, defaultManagerSettings)
 import qualified Data.ByteString.Char8 as BS8
 import System.Console.ANSI (setSGRCode, SGR(SetColor, SetConsoleIntensity,
@@ -59,10 +58,12 @@ instance Show TomatoesCLIState where
 type TomatoesT = InputT (StateT TomatoesCLIState IO)
 
 
-data TimerState = TimerState {
-    tsPomodoroTimerStart :: Maybe UTCTime,
-    _tsPauseTimerStart :: Maybe UTCTime
-  }
+data TimerState =
+    InitialState
+  | PomodoroRunning
+  | WaitingForTags
+  | PauseRunning
+    deriving (Show)
 
 
 -- | Returns a formatted pomodoro time.
@@ -99,7 +100,7 @@ getInitialState =
       -- SIGWINCH (window change) signal
       <*> pure 80
       <*> pure 0
-      <*> newTVarIO (TimerState Nothing Nothing)
+      <*> newTVarIO InitialState
       <*> newManager defaultManagerSettings
   where
     readConfig :: IO (Either SomeException String)
@@ -124,9 +125,7 @@ prompt mToken =
   ++ "% "
 
 
--- TODO: send notification if after a pause the user doesn't start a new
--- pomodoro
--- TODO: handle pauses
+-- TODO: handle long pauses after 4 pomodoros
 -- TODO: handle empty commands: it shouldn't print anything apart from a new
 -- prompt
 execute :: Either String Command -> TomatoesT ()
@@ -154,15 +153,22 @@ execute (Right GithubAuth) = do
           -- TODO: store the Tomatoes API token in a local configuration file
           outputStrLn "Success!"
 execute (Right StartPomodoro) =
-    handle (\Interrupt -> outputStrLn "Cancelled.") $ withInterrupt runPomodoro
+    handle interruptHandler $ withInterrupt runPomodoro
   where
+    interruptHandler Interrupt = do
+      tTimerState <- lift $ gets sTimerState
+      liftIO . atomically . modifyTVar tTimerState $ const InitialState
+      outputStrLn "Cancelled."
     oneSec = 1000000
+    oneMin = oneSec * 60
     pomodoroSecs :: Num a => a
     pomodoroSecs = 25 * 60
-    runTimer timerStart = do
+    pauseSecs :: Num a => a
+    pauseSecs = 5 * 60
+    runTimer timerStart timerLength = do
       now <- liftIO getCurrentTime
       let delta = diffUTCTime now timerStart
-      when (delta < pomodoroSecs + 1) $ do
+      when (delta < timerLength + 1) $ do
         outputStr $ setCursorColumnCode 0
         progressBar delta
         outputStr saveCursorCode
@@ -170,7 +176,7 @@ execute (Right StartPomodoro) =
         outputStr $ pomodoroTime (deltaToTimeOfDay delta)
         outputStr restoreCursorCode
         liftIO $ threadDelay oneSec
-        runTimer timerStart
+        runTimer timerStart timerLength
     deltaToTimeOfDay :: NominalDiffTime -> TimeOfDay
     deltaToTimeOfDay = timeToTimeOfDay . secondsToDiffTime . truncate
     percentage :: NominalDiffTime -> Double
@@ -193,21 +199,30 @@ execute (Right StartPomodoro) =
       -- TODO: handle errors, example: the case when a command to notify the
       -- user is not present
       createProcess (proc "notify-send" ["-t", "10", "Tomatoes", message])
-    notifyPomodoroEnd tTimerState = do
-      (TimerState mPomodoroTimer _) <- atomically $ readTVar tTimerState
-      when (isNothing mPomodoroTimer) $ do
-        void $ notify "Pomodoro finished"
-        threadDelay $ 20 * oneSec
-        notifyPomodoroEnd tTimerState
+    isWaitingForTags WaitingForTags = True
+    isWaitingForTags _ = False
+    isInitialState InitialState = True
+    isInitialState _ = False
+    notifyUntil tTimerState condition message = do
+      timerState <- atomically $ readTVar tTimerState
+      when (condition timerState) $ do
+        void $ notify message
+        threadDelay oneMin
+        notifyUntil tTimerState condition message
     runPomodoro = do
       now <- liftIO getCurrentTime
       tTimerState <- lift $ gets sTimerState
-      liftIO . atomically . modifyTVar tTimerState
-        $ \ts -> ts {tsPomodoroTimerStart = Just now}
-      runTimer now
-      liftIO . atomically . modifyTVar tTimerState
-        $ \ts -> ts {tsPomodoroTimerStart = Nothing}
-      void . liftIO . forkIO $ notifyPomodoroEnd tTimerState
+      liftIO . atomically . modifyTVar tTimerState $ const PomodoroRunning
+      runTimer now pomodoroSecs
+      void . liftIO $ do
+        atomically . modifyTVar tTimerState $ const WaitingForTags
+        void $ notify "Pomodoro finished!"
+        void . forkIO $ do
+          threadDelay oneMin
+          notifyUntil
+            tTimerState
+            isWaitingForTags
+            "Did you forget to save your current tomato?"
       mToken <- lift $ gets sTomatoesToken
       case mToken of
         Nothing -> return ()
@@ -221,3 +236,14 @@ execute (Right StartPomodoro) =
               case response of
                 Left err -> outputStrLn $ "Error: " ++ err
                 Right _ -> outputStrLn "Tomato saved."
+      liftIO . atomically . modifyTVar tTimerState $ const PauseRunning
+      runTimer now pauseSecs
+      liftIO $ do
+        atomically . modifyTVar tTimerState $ const InitialState
+        void $ notify "Break is over. It's time to work."
+        void . forkIO $ do
+          threadDelay oneMin
+          notifyUntil
+            tTimerState
+            isInitialState
+            "Did you forget to start your next tomato?"
