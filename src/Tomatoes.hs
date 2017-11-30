@@ -183,7 +183,7 @@ execute (Right StartPomodoro) =
       void . liftIO $ createProcess (proc "notify-send" ["-t", "10", "Tomatoes", message])
     runPomodoro = do
       now <- liftIO getCurrentTime
-      void $ runTimer now
+      runTimer now
       -- TODO: keep notifying the user every 30 seconds until the user accepts
       -- creates the new tomato
       notify "Pomodoro finished"
