@@ -68,7 +68,8 @@ cli = do
   where
     loop :: TomatoesT ()
     loop = do
-      mInput <- getInputLine prompt
+      mToken <- lift $ gets sTomatoesToken
+      mInput <- getInputLine $ prompt mToken
       case mInput of
         Nothing -> return ()
         Just input -> do
@@ -100,16 +101,15 @@ getInitialState =
       | otherwise = c : removeSpaces cs
 
 
--- TODO: notify user in case the session is not authenticated (it won't be
--- able to store tomatoes)
 -- | The default prompt.
-prompt :: String
-prompt =
+prompt :: Maybe a -> String
+prompt mToken =
      setSGRCode [SetColor Foreground Vivid Red]
   ++ setSGRCode [SetColor Background Vivid White]
   ++ setSGRCode [SetConsoleIntensity BoldIntensity]
   ++ "🍅 "
   ++ setSGRCode [Reset]
+  ++ maybe "(not connected) " (const "") mToken
   ++ "% "
 
 
