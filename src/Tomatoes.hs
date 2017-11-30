@@ -8,14 +8,15 @@ module Tomatoes (
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, try)
-import Control.Monad (void, replicateM_, forM_)
+import Control.Monad (void, when)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (StateT(runStateT), modify, gets)
 import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Data.ByteString (ByteString)
-import Data.Time (FormatTime, TimeOfDay, midnight, formatTime,
-  defaultTimeLocale, timeToTimeOfDay, timeOfDayToTime)
+import Data.Time (FormatTime, NominalDiffTime, TimeOfDay, midnight, formatTime,
+  defaultTimeLocale, timeToTimeOfDay, getCurrentTime, diffUTCTime,
+  secondsToDiffTime)
 import Network.HTTP.Client (Manager, newManager, defaultManagerSettings)
 import qualified Data.ByteString.Char8 as BS8
 import System.Console.ANSI (setSGRCode, SGR(SetColor, SetConsoleIntensity,
@@ -40,17 +41,15 @@ import Tomatoes.Types (Command(Exit, Help, GithubAuth, StartPomodoro),
 data TomatoesCLIState = TomatoesCLIState {
     sTomatoesToken :: Maybe ByteString,
     sCols :: Int,
-    sCurrentTimer :: Maybe TimeOfDay,
     _sTomatoesCount :: Int,
     sHttpManager :: Manager
   }
 
 -- define an explicit show instance because manager doesn't implement it
 instance Show TomatoesCLIState where
-  show (TomatoesCLIState tomatoesToken cols currentTimer tomatoesCount _) =
+  show (TomatoesCLIState tomatoesToken cols tomatoesCount _) =
        "Tomatoes API token: " ++ maybe "N/A" (const "***") tomatoesToken
     ++ ", cols: " ++ show cols
-    ++ ", current timer: " ++ maybe "N/A" pomodoroTime currentTimer
     ++ ", tomatoes: " ++ show tomatoesCount
 
 type TomatoesT = InputT (StateT TomatoesCLIState IO)
@@ -88,7 +87,6 @@ getInitialState =
       -- TODO: dinamically change this value by adding a handler for the
       -- SIGWINCH (window change) signal
       <*> pure 80
-      <*> pure Nothing
       <*> pure 0
       <*> newManager defaultManagerSettings
   where
@@ -147,25 +145,25 @@ execute (Right GithubAuth) = do
 execute (Right StartPomodoro) =
     handle (\Interrupt -> outputStrLn "Cancelled.") $ withInterrupt runPomodoro
   where
-    tick = do
-      -- TODO: handle output in a separate thread to avoid increasing the amount
-      -- of time spent running a pomodoro
-      mCurrentTimer <- lift $ gets sCurrentTimer
-      outputStr $ setCursorColumnCode 0
-      forM_ mCurrentTimer progressBar
-      outputStr saveCursorCode
-      outputStr $ setCursorColumnCode 0
-      outputStr $ maybe (pomodoroTime midnight) pomodoroTime mCurrentTimer
-      outputStr restoreCursorCode
-      lift $ modify increaseTimer
-      liftIO $ threadDelay 1000000
-    increaseTimer tomatoesState@(TomatoesCLIState _ _ (Just time) _ _) =
-      tomatoesState {sCurrentTimer = Just (addSeconds 1 time)}
-    increaseTimer _ = error "Timer has not been started"
-    addSeconds n = timeToTimeOfDay . (+) n . timeOfDayToTime
-    percentage :: TimeOfDay -> Double
-    percentage = (/ (25 * 60)) . realToFrac . timeOfDayToTime
-    progressBar time = do
+    pomodoroSecs :: Num a => a
+    pomodoroSecs = 25 * 60
+    runTimer timerStart = do
+      now <- liftIO getCurrentTime
+      let delta = diffUTCTime now timerStart
+      when (delta < pomodoroSecs + 1) $ do
+        outputStr $ setCursorColumnCode 0
+        progressBar delta
+        outputStr saveCursorCode
+        outputStr $ setCursorColumnCode 0
+        outputStr $ pomodoroTime (deltaToTimeOfDay delta)
+        outputStr restoreCursorCode
+        liftIO $ threadDelay 1000000
+        runTimer timerStart
+    deltaToTimeOfDay :: NominalDiffTime -> TimeOfDay
+    deltaToTimeOfDay = timeToTimeOfDay . secondsToDiffTime . truncate
+    percentage :: NominalDiffTime -> Double
+    percentage = (/ pomodoroSecs) . realToFrac
+    progressBar delta = do
         cols <- lift $ gets sCols
         outputStr prefix
         outputStr $ replicate (truncate (filled cols)) '='
@@ -177,16 +175,15 @@ execute (Right StartPomodoro) =
         suffix = "|"
         availableCols cols = cols - length prefix - length suffix
         filled cols =
-          percentage time * fromIntegral (availableCols cols)
-    tickMinute = replicateM_ 60 tick
+          percentage delta * fromIntegral (availableCols cols)
     notify message =
       -- TODO: choose the correct command according to the OS
       -- TODO: handle errors, example: the case when a command to notify the
       -- user is not present
       void . liftIO $ createProcess (proc "notify-send" ["-t", "10", "Tomatoes", message])
     runPomodoro = do
-      lift . modify $ \tomatoesState -> tomatoesState {sCurrentTimer = Just midnight}
-      replicateM_ 25 tickMinute
+      now <- liftIO getCurrentTime
+      void $ runTimer now
       -- TODO: keep notifying the user every 30 seconds until the user accepts
       -- creates the new tomato
       notify "Pomodoro finished"
