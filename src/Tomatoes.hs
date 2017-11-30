@@ -6,8 +6,11 @@ module Tomatoes (
   getInitialState
 ) where
 
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay, forkIO)
+import Control.Concurrent.STM (TVar, newTVarIO, atomically, readTVar,
+  modifyTVar)
 import Control.Exception (SomeException, try)
+import Data.Maybe (isNothing)
 import Control.Monad (void, when)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class (liftIO)
@@ -16,7 +19,7 @@ import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Data.ByteString (ByteString)
 import Data.Time (FormatTime, NominalDiffTime, TimeOfDay, midnight, formatTime,
   defaultTimeLocale, timeToTimeOfDay, getCurrentTime, diffUTCTime,
-  secondsToDiffTime)
+  secondsToDiffTime, UTCTime)
 import Network.HTTP.Client (Manager, newManager, defaultManagerSettings)
 import qualified Data.ByteString.Char8 as BS8
 import System.Console.ANSI (setSGRCode, SGR(SetColor, SetConsoleIntensity,
@@ -42,17 +45,24 @@ data TomatoesCLIState = TomatoesCLIState {
     sTomatoesToken :: Maybe ByteString,
     sCols :: Int,
     _sTomatoesCount :: Int,
+    sTimerState :: TVar TimerState,
     sHttpManager :: Manager
   }
 
 -- define an explicit show instance because manager doesn't implement it
 instance Show TomatoesCLIState where
-  show (TomatoesCLIState tomatoesToken cols tomatoesCount _) =
+  show (TomatoesCLIState tomatoesToken cols tomatoesCount _ _) =
        "Tomatoes API token: " ++ maybe "N/A" (const "***") tomatoesToken
     ++ ", cols: " ++ show cols
     ++ ", tomatoes: " ++ show tomatoesCount
 
 type TomatoesT = InputT (StateT TomatoesCLIState IO)
+
+
+data TimerState = TimerState {
+    tsPomodoroTimerStart :: Maybe UTCTime,
+    _tsPauseTimerStart :: Maybe UTCTime
+  }
 
 
 -- | Returns a formatted pomodoro time.
@@ -89,6 +99,7 @@ getInitialState =
       -- SIGWINCH (window change) signal
       <*> pure 80
       <*> pure 0
+      <*> newTVarIO (TimerState Nothing Nothing)
       <*> newManager defaultManagerSettings
   where
     readConfig :: IO (Either SomeException String)
@@ -181,13 +192,22 @@ execute (Right StartPomodoro) =
       -- TODO: choose the correct command according to the OS
       -- TODO: handle errors, example: the case when a command to notify the
       -- user is not present
-      void . liftIO $ createProcess (proc "notify-send" ["-t", "10", "Tomatoes", message])
+      createProcess (proc "notify-send" ["-t", "10", "Tomatoes", message])
+    notifyPomodoroEnd tTimerState = do
+      (TimerState mPomodoroTimer _) <- atomically $ readTVar tTimerState
+      when (isNothing mPomodoroTimer) $ do
+        void $ notify "Pomodoro finished"
+        threadDelay $ 20 * oneSec
+        notifyPomodoroEnd tTimerState
     runPomodoro = do
       now <- liftIO getCurrentTime
+      tTimerState <- lift $ gets sTimerState
+      liftIO . atomically . modifyTVar tTimerState
+        $ \ts -> ts {tsPomodoroTimerStart = Just now}
       runTimer now
-      -- TODO: keep notifying the user every 30 seconds until the user accepts
-      -- creates the new tomato
-      notify "Pomodoro finished"
+      liftIO . atomically . modifyTVar tTimerState
+        $ \ts -> ts {tsPomodoroTimerStart = Nothing}
+      void . liftIO . forkIO $ notifyPomodoroEnd tTimerState
       mToken <- lift $ gets sTomatoesToken
       case mToken of
         Nothing -> return ()
