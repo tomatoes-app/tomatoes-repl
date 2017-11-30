@@ -1,6 +1,7 @@
 resolver: lts-9.14
 packages:
 - '.'
-extra-deps: []
+extra-deps:
+- ansi-terminal-0.7.1.1
 flags: {}
 extra-package-dbs: []
