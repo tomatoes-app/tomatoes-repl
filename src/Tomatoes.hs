@@ -145,6 +145,7 @@ execute (Right GithubAuth) = do
 execute (Right StartPomodoro) =
     handle (\Interrupt -> outputStrLn "Cancelled.") $ withInterrupt runPomodoro
   where
+    oneSec = 1000000
     pomodoroSecs :: Num a => a
     pomodoroSecs = 25 * 60
     runTimer timerStart = do
@@ -157,7 +158,7 @@ execute (Right StartPomodoro) =
         outputStr $ setCursorColumnCode 0
         outputStr $ pomodoroTime (deltaToTimeOfDay delta)
         outputStr restoreCursorCode
-        liftIO $ threadDelay 1000000
+        liftIO $ threadDelay oneSec
         runTimer timerStart
     deltaToTimeOfDay :: NominalDiffTime -> TimeOfDay
     deltaToTimeOfDay = timeToTimeOfDay . secondsToDiffTime . truncate
