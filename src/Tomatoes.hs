@@ -32,7 +32,7 @@ import System.Console.Haskeline (InputT, Interrupt(Interrupt), runInputT,
 import System.Environment (getEnv)
 import System.Exit (exitSuccess)
 import System.FilePath.Posix ((</>))
-import System.Process (createProcess, proc)
+import System.Process (createProcess, proc, std_err, StdStream(NoStream))
 
 import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
   createSession, createTomato, tuName, getUser, TomatoesUser)
@@ -68,6 +68,16 @@ data TimerState =
   | WaitingForTags
   | PauseRunning
     deriving (Show)
+
+
+data Sound = Ringing | Ding
+  deriving (Show)
+
+
+-- | Returns a sound's filename
+soundFileName :: Sound -> FilePath
+soundFileName Ringing = "sounds/ringing.mp3"
+soundFileName Ding = "sounds/ding.mp3"
 
 
 -- | Returns a formatted pomodoro time.
@@ -228,10 +238,14 @@ execute (Right StartPomodoro) =
         availableCols cols = cols - length prefix - length suffix
         filled cols =
           percentage delta * fromIntegral (availableCols cols)
-    notify message =
-      -- TODO: choose the correct command according to the OS
+    notify message sound = do
+      -- TODO: choose the correct commands according to the OS capabilities
       -- TODO: handle errors, example: the case when a command to notify the
       -- user is not present
+      void . forkIO . void $ createProcess (proc "mpg123" [soundFileName sound]) {
+          -- Suppress output to stderr
+          std_err = NoStream
+        }
       createProcess (proc "notify-send" ["-t", "10", "Tomatoes", message])
     isWaitingForTags WaitingForTags = True
     isWaitingForTags _ = False
@@ -240,7 +254,7 @@ execute (Right StartPomodoro) =
     notifyUntil tTimerState condition message = do
       timerState <- atomically $ readTVar tTimerState
       when (condition timerState) $ do
-        void $ notify message
+        void $ notify message Ding
         threadDelay oneMin
         notifyUntil tTimerState condition message
     validateTags _ Nothing = outputStrLn "Error: missing tags"
@@ -265,7 +279,7 @@ execute (Right StartPomodoro) =
       startTimer pomodoroSecs
       void . liftIO $ do
         atomically . modifyTVar tTimerState $ const WaitingForTags
-        void $ notify "Pomodoro finished!"
+        void $ notify "Pomodoro finished!" Ringing
         void . forkIO $ do
           threadDelay oneMin
           notifyUntil
@@ -280,7 +294,7 @@ execute (Right StartPomodoro) =
       startTimer pauseSecs
       liftIO $ do
         atomically . modifyTVar tTimerState $ const InitialState
-        void $ notify "Break is over. It's time to work."
+        void $ notify "Break is over. It's time to work." Ringing
         void . forkIO $ do
           threadDelay oneMin
           notifyUntil
