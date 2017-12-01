@@ -61,5 +61,5 @@ createTomato manager tomatoesToken tags = do
     }
   response <- httpLbs request manager
   case statusCode (responseStatus response) of
-     201 -> return $ eitherDecode (responseBody response)
-     _ -> return $ Left (unpack (responseBody response))
+    201 -> return $ eitherDecode (responseBody response)
+    _ -> return $ Left (unpack (responseBody response))
