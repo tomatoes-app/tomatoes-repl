@@ -160,8 +160,14 @@ execute (Right GithubAuth) = do
         Left err -> outputStrLn $ "Error : " ++ err
         Right (CreateSessionResponse token) -> do
           lift . modify $ \tomatoesState -> tomatoesState {sTomatoesToken = Just (BS8.pack token)}
-          -- TODO: store the Tomatoes API token in a local configuration file
           outputStrLn "Success!"
+          eResult <- liftIO . try $ do
+            home <- getEnv "HOME"
+            writeFile (home </> configFile) token
+          case eResult :: Either SomeException () of
+            Left err -> outputStrLn
+              $ "Error trying to save Tomatoes API token: " ++ show err
+            Right _ -> outputStrLn "Tomatoes API token configuration saved."
 execute (Right StartPomodoro) =
     handle interruptHandler $ withInterrupt runPomodoro
   where
