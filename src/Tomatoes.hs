@@ -205,7 +205,7 @@ execute (Right StartPomodoro) =
     progressBar delta = do
         cols <- lift $ gets sCols
         outputStr prefix
-        outputStr $ replicate (truncate (filled cols)) '='
+        outputStr $ replicate (truncate (filled cols)) '░'
         outputStr $ replicate (availableCols cols - truncate (filled cols)) ' '
         outputStr suffix
       where
