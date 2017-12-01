@@ -81,6 +81,8 @@ cli = do
     loop :: TomatoesT ()
     loop = do
       mToken <- lift $ gets sTomatoesToken
+      -- TODO: use getInputLineWithInitial, see
+      -- https://downloads.haskell.org/~ghc/8.2.1/docs/html/libraries/haskeline-0.7.4.0/System-Console-Haskeline.html#v:getInputLineWithInitial
       mInput <- getInputLine $ prompt mToken
       case mInput of
         Nothing -> return ()
