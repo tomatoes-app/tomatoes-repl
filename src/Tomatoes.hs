@@ -16,6 +16,7 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (StateT(runStateT), modify, gets)
 import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Data.ByteString (ByteString)
+import Data.Char (isSpace)
 import Data.Time (FormatTime, NominalDiffTime, TimeOfDay, midnight, formatTime,
   defaultTimeLocale, timeToTimeOfDay, getCurrentTime, diffUTCTime,
   secondsToDiffTime)
@@ -110,11 +111,7 @@ getInitialState =
         Left _ -> return Nothing
         Right token -> do
           putStrLn "Configuration file found..."
-          return . Just . BS8.pack . removeSpaces $ token
-    removeSpaces [] = []
-    removeSpaces (c:cs)
-      | c == '\n' || c == ' ' = removeSpaces cs
-      | otherwise = c : removeSpaces cs
+          return . Just . BS8.pack . filter (not . isSpace) $ token
 
 
 -- | The default prompt.
