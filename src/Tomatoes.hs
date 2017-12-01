@@ -77,6 +77,8 @@ pomodoroTime = formatTime defaultTimeLocale "%M:%S"
 cli :: IO ()
 cli = do
     initialState <- getInitialState
+    -- TODO: add completion function, see
+    -- https://downloads.haskell.org/~ghc/8.2.1/docs/html/libraries/haskeline-0.7.4.0/System-Console-Haskeline-Completion.html
     void $ runStateT (runInputT defaultSettings loop) initialState
   where
     loop :: TomatoesT ()
