@@ -143,7 +143,7 @@ execute (Right Help) = do
 execute (Right GithubAuth) = do
   mGithubToken <- getPassword (Just '*') "GitHub token: "
   case mGithubToken of
-    Nothing -> execute (Right GithubAuth)
+    Nothing -> outputStrLn "Error: missing input"
     Just githubToken -> do
       manager <- lift $ gets sHttpManager
       response <- liftIO $ createSession manager (BS8.pack githubToken)
@@ -218,7 +218,7 @@ execute (Right StartPomodoro) =
       mConfirm <-
         getInputLine "Are you sure you want to save without tags? (y/N) "
       case mConfirm of
-        Nothing -> outputStrLn "no input..."
+        Nothing -> outputStrLn "Error: missing input"
         Just x | map toLower x == "y" || map toLower x == "yes" ->
           saveTomato token ""
         Just _ -> getInputLine "Tags: " >>= validateTags token
