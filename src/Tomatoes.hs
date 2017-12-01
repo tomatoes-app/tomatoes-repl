@@ -88,13 +88,12 @@ cli = do
           loop
 
 
--- TODO: notify the user when a local configuration file has been found.
 -- | Generates the initial state of the CLI. It tries to read a Tomatoes API
 -- token from a `.tomatoes` file in the `$HOME` directory.
 getInitialState :: IO TomatoesCLIState
 getInitialState =
     TomatoesCLIState
-      <$> (either (const Nothing) (Just . BS8.pack . removeSpaces) <$> readConfig)
+      <$> readConfig
       -- TODO: read the COLUMNS env and set it as a maximum value
       -- TODO: dinamically change this value by adding a handler for the
       -- SIGWINCH (window change) signal
@@ -103,10 +102,15 @@ getInitialState =
       <*> newTVarIO InitialState
       <*> newManager defaultManagerSettings
   where
-    readConfig :: IO (Either SomeException String)
+    readConfig :: IO (Maybe ByteString)
     readConfig = do
       homePath <- getEnv "HOME"
-      try . readFile $ homePath ++ "/.tomatoes"
+      eToken <- try . readFile $ homePath ++ "/.tomatoes"
+      case eToken :: Either SomeException String of
+        Left _ -> return Nothing
+        Right token -> do
+          putStrLn "Configuration file found..."
+          return . Just . BS8.pack . removeSpaces $ token
     removeSpaces [] = []
     removeSpaces (c:cs)
       | c == '\n' || c == ' ' = removeSpaces cs
@@ -165,6 +169,9 @@ execute (Right StartPomodoro) =
     pomodoroSecs = 25 * 60
     pauseSecs :: Num a => a
     pauseSecs = 5 * 60
+    startTimer timerLength = do
+      now <- liftIO getCurrentTime
+      runTimer now timerLength
     runTimer timerStart timerLength = do
       now <- liftIO getCurrentTime
       let delta = diffUTCTime now timerStart
@@ -210,10 +217,9 @@ execute (Right StartPomodoro) =
         threadDelay oneMin
         notifyUntil tTimerState condition message
     runPomodoro = do
-      now <- liftIO getCurrentTime
       tTimerState <- lift $ gets sTimerState
       liftIO . atomically . modifyTVar tTimerState $ const PomodoroRunning
-      runTimer now pomodoroSecs
+      startTimer pomodoroSecs
       void . liftIO $ do
         atomically . modifyTVar tTimerState $ const WaitingForTags
         void $ notify "Pomodoro finished!"
@@ -237,7 +243,7 @@ execute (Right StartPomodoro) =
                 Left err -> outputStrLn $ "Error: " ++ err
                 Right _ -> outputStrLn "Tomato saved."
       liftIO . atomically . modifyTVar tTimerState $ const PauseRunning
-      runTimer now pauseSecs
+      startTimer pauseSecs
       liftIO $ do
         atomically . modifyTVar tTimerState $ const InitialState
         void $ notify "Break is over. It's time to work."
