@@ -16,7 +16,7 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (StateT(runStateT), modify, gets)
 import Data.Attoparsec.ByteString.Char8 (parseOnly)
 import Data.ByteString (ByteString)
-import Data.Char (isSpace)
+import Data.Char (isSpace, toLower)
 import Data.Time (FormatTime, NominalDiffTime, TimeOfDay, midnight, formatTime,
   defaultTimeLocale, timeToTimeOfDay, getCurrentTime, diffUTCTime,
   secondsToDiffTime)
@@ -213,6 +213,22 @@ execute (Right StartPomodoro) =
         void $ notify message
         threadDelay oneMin
         notifyUntil tTimerState condition message
+    validateTags _ Nothing = outputStrLn "Error: missing tags"
+    validateTags token (Just "") = do
+      mConfirm <-
+        getInputLine "Are you sure you want to save without tags? (y/N) "
+      case mConfirm of
+        Nothing -> outputStrLn "no input..."
+        Just x | map toLower x == "y" || map toLower x == "yes" ->
+          saveTomato token ""
+        Just _ -> getInputLine "Tags: " >>= validateTags token
+    validateTags token (Just tags) = saveTomato token tags
+    saveTomato token tags = do
+      manager <- lift $ gets sHttpManager
+      response <- liftIO $ createTomato manager token (BS8.pack tags)
+      case response of
+        Left err -> outputStrLn $ "Error: " ++ err
+        Right _ -> outputStrLn "Tomato saved."
     runPomodoro = do
       tTimerState <- lift $ gets sTimerState
       liftIO . atomically . modifyTVar tTimerState $ const PomodoroRunning
@@ -229,16 +245,7 @@ execute (Right StartPomodoro) =
       mToken <- lift $ gets sTomatoesToken
       case mToken of
         Nothing -> return ()
-        Just token -> do
-          mTags <- getInputLine "Tags: "
-          case mTags of
-            Nothing -> outputStrLn "no input..."
-            Just tags -> do
-              manager <- lift $ gets sHttpManager
-              response <- liftIO $ createTomato manager token (BS8.pack tags)
-              case response of
-                Left err -> outputStrLn $ "Error: " ++ err
-                Right _ -> outputStrLn "Tomato saved."
+        Just token -> getInputLine "Tags: " >>= validateTags token
       liftIO . atomically . modifyTVar tTimerState $ const PauseRunning
       startTimer pauseSecs
       liftIO $ do
