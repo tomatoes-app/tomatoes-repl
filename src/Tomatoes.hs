@@ -31,6 +31,7 @@ import System.Console.Haskeline (InputT, Interrupt(Interrupt), runInputT,
   withInterrupt, handle)
 import System.Environment (getEnv)
 import System.Exit (exitSuccess)
+import System.FilePath.Posix ((</>))
 import System.Process (createProcess, proc)
 
 import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
@@ -107,13 +108,19 @@ getInitialState =
   where
     readConfig :: IO (Maybe ByteString)
     readConfig = do
-      homePath <- getEnv "HOME"
-      eToken <- try . readFile $ homePath ++ "/.tomatoes"
+      home <- getEnv "HOME"
+      eToken <- try . readFile $ home </> configFile
       case eToken :: Either SomeException String of
         Left _ -> return Nothing
         Right token -> do
           putStrLn "Configuration file found..."
           return . Just . BS8.pack . filter (not . isSpace) $ token
+
+
+-- | The configuration file where the app stores and reads the Tomatoes API
+-- access token.
+configFile :: FilePath
+configFile = ".tomatoes"
 
 
 -- | The default prompt.
