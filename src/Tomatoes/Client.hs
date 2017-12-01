@@ -4,16 +4,19 @@ module Tomatoes.Client (
   createSession,
   CreateSessionResponse(..),
   createTomato,
-  CreateTomatoResponse(..)
+  CreateTomatoResponse(..),
+  getUser,
+  TomatoesUser(..)
 ) where
 
-import Data.Aeson (FromJSON, Value(Object), parseJSON, (.:), eitherDecode)
+import Data.Aeson (FromJSON, Value(Object), parseJSON, (.:), eitherDecode,
+  withObject)
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Monoid ((<>))
 import Network.HTTP.Client (Manager, Request(method, requestBody),
   RequestBody(RequestBodyBS), Response(responseBody, responseStatus),
-  parseRequest, httpLbs)
+  parseRequest, httpLbs, setQueryString)
 import Network.HTTP.Types.Status (Status(statusCode))
 
 
@@ -41,6 +44,17 @@ instance FromJSON CreateTomatoResponse where
   parseJSON s = fail $ "Can't parse " ++ show s
 
 
+data TomatoesUser = TomatoesUser {
+    tuId :: String,
+    tuName :: String
+  } deriving (Show)
+
+instance FromJSON TomatoesUser where
+  parseJSON = withObject "TomatoesUser" $ \o -> TomatoesUser
+    <$> o .: "id"
+    <*> o .: "name"
+
+
 createSession :: Manager -> ByteString -> IO (Either String CreateSessionResponse)
 createSession manager githubToken = do
   initRequest <- parseRequest "http://tomato.es/api/session"
@@ -62,4 +76,14 @@ createTomato manager tomatoesToken tags = do
   response <- httpLbs request manager
   case statusCode (responseStatus response) of
     201 -> return $ eitherDecode (responseBody response)
+    _ -> return $ Left (unpack (responseBody response))
+
+
+getUser :: Manager -> ByteString -> IO (Either String TomatoesUser)
+getUser manager tomatoesToken = do
+  initRequest <- parseRequest "http://tomato.es/api/user"
+  let request = setQueryString [("token", Just tomatoesToken)] initRequest
+  response <- httpLbs request manager
+  case statusCode (responseStatus response) of
+    200 -> return $ eitherDecode (responseBody response)
     _ -> return $ Left (unpack (responseBody response))

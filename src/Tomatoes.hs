@@ -35,7 +35,7 @@ import System.FilePath.Posix ((</>))
 import System.Process (createProcess, proc)
 
 import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
-  createSession, createTomato)
+  createSession, createTomato, tuName, getUser, TomatoesUser)
 import Tomatoes.Parser (commandParser)
 import Tomatoes.Types (Command(Exit, Help, GithubAuth, StartPomodoro),
   availableCommands)
@@ -44,6 +44,7 @@ import Tomatoes.Types (Command(Exit, Help, GithubAuth, StartPomodoro),
 -- | The CLI state.
 data TomatoesCLIState = TomatoesCLIState {
     sTomatoesToken :: Maybe ByteString,
+    sTomatoesUser :: Maybe TomatoesUser,
     sCols :: Int,
     _sTomatoesCount :: Int,
     sTimerState :: TVar TimerState,
@@ -52,8 +53,9 @@ data TomatoesCLIState = TomatoesCLIState {
 
 -- define an explicit show instance because manager doesn't implement it
 instance Show TomatoesCLIState where
-  show (TomatoesCLIState tomatoesToken cols tomatoesCount _ _) =
+  show (TomatoesCLIState tomatoesToken mUser cols tomatoesCount _ _) =
        "Tomatoes API token: " ++ maybe "N/A" (const "***") tomatoesToken
+    ++ ", user: " ++ show mUser
     ++ ", cols: " ++ show cols
     ++ ", tomatoes: " ++ show tomatoesCount
 
@@ -84,9 +86,10 @@ cli = do
     loop :: TomatoesT ()
     loop = do
       mToken <- lift $ gets sTomatoesToken
+      mUser <- lift $ gets sTomatoesUser
       -- TODO: use getInputLineWithInitial, see
       -- https://downloads.haskell.org/~ghc/8.2.1/docs/html/libraries/haskeline-0.7.4.0/System-Console-Haskeline.html#v:getInputLineWithInitial
-      mInput <- getInputLine $ prompt mToken
+      mInput <- getInputLine $ prompt mToken mUser
       case mInput of
         Nothing -> return ()
         Just input -> do
@@ -97,17 +100,23 @@ cli = do
 -- | Generates the initial state of the CLI. It tries to read a Tomatoes API
 -- token from a `.tomatoes` file in the `$HOME` directory.
 getInitialState :: IO TomatoesCLIState
-getInitialState =
+getInitialState = do
+    mToken <- readConfig
+    manager <- newManager defaultManagerSettings
     TomatoesCLIState
-      <$> readConfig
+      <$> pure mToken
+      <*> findUser manager mToken
       -- TODO: read the COLUMNS env and set it as a maximum value
       -- TODO: dinamically change this value by adding a handler for the
       -- SIGWINCH (window change) signal
       <*> pure 80
       <*> pure 0
       <*> newTVarIO InitialState
-      <*> newManager defaultManagerSettings
+      <*> pure manager
   where
+    findUser _ Nothing = return Nothing
+    findUser manager (Just token) = either (const Nothing) Just
+      <$> getUser manager token
     readConfig :: IO (Maybe ByteString)
     readConfig = do
       home <- getEnv "HOME"
@@ -126,14 +135,15 @@ configFile = ".tomatoes"
 
 
 -- | The default prompt.
-prompt :: Maybe a -> String
-prompt mToken =
+prompt :: Maybe a -> Maybe TomatoesUser -> String
+prompt mToken mUserName =
      setSGRCode [SetColor Foreground Vivid Red]
   ++ setSGRCode [SetColor Background Vivid White]
   ++ setSGRCode [SetConsoleIntensity BoldIntensity]
   ++ "🍅 "
   ++ setSGRCode [Reset]
   ++ maybe "(not connected) " (const "") mToken
+  ++ maybe "" ((\n -> "(" ++ n ++ ") ") . tuName) mUserName
   ++ "% "
 
 
@@ -170,6 +180,9 @@ execute (Right GithubAuth) = do
             Left err -> outputStrLn
               $ "Error trying to save Tomatoes API token: " ++ show err
             Right _ -> outputStrLn "Tomatoes API token configuration saved."
+          mUser <- liftIO $ either (const Nothing) Just
+            <$> getUser manager (BS8.pack token)
+          lift . modify $ \tomatoesState -> tomatoesState {sTomatoesUser = mUser}
 execute (Right StartPomodoro) =
     handle interruptHandler $ withInterrupt runPomodoro
   where
