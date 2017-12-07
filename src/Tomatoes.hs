@@ -46,7 +46,7 @@ data TomatoesCLIState = TomatoesCLIState {
     sTomatoesToken :: Maybe ByteString,
     sTomatoesUser :: Maybe TomatoesUser,
     sCols :: Int,
-    _sTomatoesCount :: Int,
+    sTomatoesCount :: Int,
     sTimerState :: TVar TimerState,
     sHttpManager :: Manager
   }
