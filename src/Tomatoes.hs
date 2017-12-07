@@ -273,6 +273,23 @@ execute (Right StartPomodoro) =
       case response of
         Left err -> outputStrLn $ "Error: " ++ err
         Right _ -> outputStrLn "Tomato saved."
+    finishedPomodoroMessage = do
+        count <- lift $ gets sTomatoesCount
+        return
+          $ "You just finished your " ++ show count ++ ordinal count
+          ++ " pomodoro, " ++ suffix count
+      where
+        suffix count
+          | count `mod` 4 == 0 = "you deserve a long break!"
+          | otherwise = "it's time for a break."
+        ordinal 1 = "st"
+        ordinal 2 = "nd"
+        ordinal 3 = "rd"
+        ordinal n
+          | n > 20 && n `rem` 10 == 1 = "st"
+          | n > 20 && n `rem` 10 == 2 = "nd"
+          | n > 20 && n `rem` 10 == 3 = "rd"
+          | otherwise = "th"
     runPomodoro = do
       tTimerState <- lift $ gets sTimerState
       liftIO . atomically . modifyTVar tTimerState $ const PomodoroRunning
@@ -290,6 +307,7 @@ execute (Right StartPomodoro) =
       case mToken of
         Nothing -> return ()
         Just token -> getInputLine "Tags: " >>= validateTags token
+      finishedPomodoroMessage >>= outputStrLn
       liftIO . atomically . modifyTVar tTimerState $ const PauseRunning
       startTimer pauseSecs
       liftIO $ do
