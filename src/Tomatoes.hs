@@ -32,7 +32,9 @@ import System.Console.Haskeline (InputT, Interrupt(Interrupt), runInputT,
 import System.Environment (getEnv)
 import System.Exit (exitSuccess)
 import System.FilePath.Posix ((</>))
-import System.Process (createProcess, proc, std_err, StdStream(NoStream))
+import System.IO (Handle)
+import System.Process (createProcess, proc, std_err, StdStream(NoStream),
+  ProcessHandle)
 
 import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
   createSession, createTomato, tuName, getUser, TomatoesUser)
@@ -196,67 +198,16 @@ execute (Right GithubAuth) = do
 execute (Right StartPomodoro) =
     handle interruptHandler $ withInterrupt runPomodoro
   where
-    interruptHandler Interrupt = do
-      tTimerState <- lift $ gets sTimerState
-      liftIO . atomically . modifyTVar tTimerState $ const InitialState
-      outputStrLn "Cancelled."
     oneSec = 1000000
     oneMin = oneSec * 60
     pomodoroSecs :: Num a => a
     pomodoroSecs = 25 * 60
     pauseSecs :: Num a => a
     pauseSecs = 5 * 60
-    startTimer timerLength = do
-      now <- liftIO getCurrentTime
-      runTimer now timerLength
-    runTimer timerStart timerLength = do
-      now <- liftIO getCurrentTime
-      let delta = diffUTCTime now timerStart
-      when (delta < timerLength + 1) $ do
-        outputStr $ setCursorColumnCode 0
-        progressBar delta
-        outputStr saveCursorCode
-        outputStr $ setCursorColumnCode 0
-        outputStr $ pomodoroTime (deltaToTimeOfDay delta)
-        outputStr restoreCursorCode
-        liftIO $ threadDelay oneSec
-        runTimer timerStart timerLength
-    deltaToTimeOfDay :: NominalDiffTime -> TimeOfDay
-    deltaToTimeOfDay = timeToTimeOfDay . secondsToDiffTime . truncate
-    percentage :: NominalDiffTime -> Double
-    percentage = (/ pomodoroSecs) . realToFrac
-    progressBar delta = do
-        cols <- lift $ gets sCols
-        outputStr prefix
-        outputStr $ replicate (truncate (filled cols)) '░'
-        outputStr $ replicate (availableCols cols - truncate (filled cols)) ' '
-        outputStr suffix
-      where
-        -- Save space for the time
-        prefix = replicate (length (pomodoroTime midnight)) ' ' ++ " |"
-        suffix = "|"
-        availableCols cols = cols - length prefix - length suffix
-        filled cols =
-          percentage delta * fromIntegral (availableCols cols)
-    notify message sound = do
-      -- TODO: choose the correct commands according to the OS capabilities
-      -- TODO: handle errors, example: the case when a command to notify the
-      -- user is not present
-      void . forkIO . void $ createProcess (proc "mpg123" [soundFileName sound]) {
-          -- Suppress output to stderr
-          std_err = NoStream
-        }
-      createProcess (proc "notify-send" ["-t", "10", "Tomatoes", message])
     isWaitingForTags WaitingForTags = True
     isWaitingForTags _ = False
     isInitialState InitialState = True
     isInitialState _ = False
-    notifyUntil tTimerState condition message = do
-      timerState <- atomically $ readTVar tTimerState
-      when (condition timerState) $ do
-        void $ notify message Ding
-        threadDelay oneMin
-        notifyUntil tTimerState condition message
     validateTags _ Nothing = outputStrLn "Error: missing tags"
     validateTags token (Just "") = do
       mConfirm <-
@@ -319,3 +270,81 @@ execute (Right StartPomodoro) =
             tTimerState
             isInitialState
             "Did you forget to start your next tomato?"
+
+
+-- | Show a progress bar.
+progressBar :: Real a => a -> a -> TomatoesT ()
+progressBar timerLength delta = do
+    cols <- lift $ gets sCols
+    outputStr prefix
+    outputStr $ replicate (truncate (filled cols)) '░'
+    outputStr $ replicate (availableCols cols - truncate (filled cols)) ' '
+    outputStr suffix
+  where
+    -- Save space for the time
+    prefix = replicate (length (pomodoroTime midnight)) ' ' ++ " |"
+    suffix = "|"
+    availableCols cols = cols - length prefix - length suffix
+    filled cols =
+      percentage * fromIntegral (availableCols cols)
+    percentage :: Double
+    percentage = realToFrac delta / realToFrac timerLength
+
+
+-- | Handle interrupts by resetting timer state to `InitialState`.
+interruptHandler :: Interrupt -> TomatoesT ()
+interruptHandler Interrupt = do
+  tTimerState <- lift $ gets sTimerState
+  liftIO . atomically . modifyTVar tTimerState $ const InitialState
+  outputStrLn "Cancelled."
+
+
+-- | Start a new timer that lasts 'timerLength'.
+startTimer :: NominalDiffTime -> TomatoesT ()
+startTimer timerLength = do
+    now <- liftIO getCurrentTime
+    runTimer now
+  where
+    oneSec = 1000000
+    runTimer timerStart = do
+      now <- liftIO getCurrentTime
+      let delta = diffUTCTime now timerStart
+      when (delta < timerLength + 1) $ do
+        outputStr $ setCursorColumnCode 0
+        progressBar timerLength delta
+        outputStr saveCursorCode
+        outputStr $ setCursorColumnCode 0
+        outputStr $ pomodoroTime (deltaToTimeOfDay delta)
+        outputStr restoreCursorCode
+        liftIO $ threadDelay oneSec
+        runTimer timerStart
+    deltaToTimeOfDay :: NominalDiffTime -> TimeOfDay
+    deltaToTimeOfDay = timeToTimeOfDay . secondsToDiffTime . truncate
+
+
+-- | Executes a sub-process to notify the user.
+notify :: String
+  -> Sound
+  -> IO (Maybe Handle, Maybe Handle, Maybe Handle, ProcessHandle)
+notify message sound = do
+  -- TODO: choose the correct commands according to the OS capabilities
+  -- TODO: handle errors, example: the case when a command to notify the
+  -- user is not present
+  void . forkIO . void $ createProcess (proc "mpg123" [soundFileName sound]) {
+      -- Suppress output to stderr
+      std_err = NoStream
+    }
+  createProcess (proc "notify-send" ["-t", "10", "Tomatoes", message])
+
+
+-- | Notifies `message` every minute until `condition` is false.
+notifyUntil :: TVar t -> (t -> Bool) -> String -> IO ()
+notifyUntil tTimerState condition message = do
+    timerState <- atomically $ readTVar tTimerState
+    when (condition timerState) $ do
+      void $ notify message Ding
+      threadDelay oneMin
+      notifyUntil tTimerState condition message
+  where
+    oneSec = 1000000
+    oneMin = oneSec * 60
