@@ -105,7 +105,11 @@ cli = do
       case mInput of
         Nothing -> return ()
         Just input -> do
-          execute $ parseOnly commandParser (BS8.pack input)
+          case parseOnly commandParser (BS8.pack input) of
+            Left _ -> do
+              outputStrLn "Parsing error"
+              outputStrLn $ "Available commands: " ++ availableCommands
+            Right command -> execute command
           loop
 
 
@@ -162,18 +166,15 @@ prompt mToken mUserName =
 -- TODO: handle long pauses after 4 pomodoros
 -- TODO: handle empty commands: it shouldn't print anything apart from a new
 -- prompt
-execute :: Either String Command -> TomatoesT ()
-execute (Left _) = do
-  outputStrLn "Parsing error"
-  outputStrLn $ "Available commands: " ++ availableCommands
-execute (Right Exit) = liftIO exitSuccess
-execute (Right Help) = do
+execute :: Command -> TomatoesT ()
+execute Exit = liftIO exitSuccess
+execute Help = do
   outputStr $ setSGRCode [SetColor Foreground Vivid Red]
   outputStr $ setSGRCode [SetColor Background Vivid Blue]
   outputStrLn $ "Available commands: " ++ availableCommands
   outputStrLn "TODO: put a more detailed description for each command..."
   outputStr $ setSGRCode [Reset]
-execute (Right GithubAuth) = do
+execute GithubAuth = do
   mGithubToken <- getPassword (Just '*') "GitHub token: "
   case mGithubToken of
     Nothing -> outputStrLn "Error: missing input"
@@ -195,7 +196,7 @@ execute (Right GithubAuth) = do
           mUser <- liftIO $ either (const Nothing) Just
             <$> getUser manager (BS8.pack token)
           lift . modify $ \tomatoesState -> tomatoesState {sTomatoesUser = mUser}
-execute (Right StartPomodoro) =
+execute StartPomodoro =
     handle interruptHandler $ withInterrupt runPomodoro
   where
     oneSec = 1000000
@@ -256,8 +257,8 @@ execute (Right StartPomodoro) =
         Nothing -> return ()
         Just token -> getInputLine "Tags: " >>= validateTags token
       finishedPomodoroMessage >>= outputStrLn
-      execute (Right StartPause)
-execute (Right StartPause) =
+      execute StartPause
+execute StartPause =
     handle interruptHandler $ withInterrupt runPomodoro
   where
     oneSec = 1000000
