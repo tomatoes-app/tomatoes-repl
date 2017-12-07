@@ -39,8 +39,8 @@ import System.Process (createProcess, proc, std_err, StdStream(NoStream),
 import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
   createSession, createTomato, tuName, getUser, TomatoesUser)
 import Tomatoes.Parser (commandParser)
-import Tomatoes.Types (Command(Exit, Help, GithubAuth, StartPomodoro),
-  availableCommands)
+import Tomatoes.Types (Command(Exit, Help, GithubAuth, StartPomodoro,
+  StartPause), availableCommands)
 
 
 -- | The CLI state.
@@ -202,12 +202,8 @@ execute (Right StartPomodoro) =
     oneMin = oneSec * 60
     pomodoroSecs :: Num a => a
     pomodoroSecs = 25 * 60
-    pauseSecs :: Num a => a
-    pauseSecs = 5 * 60
     isWaitingForTags WaitingForTags = True
     isWaitingForTags _ = False
-    isInitialState InitialState = True
-    isInitialState _ = False
     validateTags _ Nothing = outputStrLn "Error: missing tags"
     validateTags token (Just "") = do
       mConfirm <-
@@ -254,11 +250,24 @@ execute (Right StartPomodoro) =
             tTimerState
             isWaitingForTags
             "Did you forget to save your current tomato?"
+      lift . modify $ \tomatoesState -> tomatoesState {sTomatoesCount = sTomatoesCount tomatoesState + 1}
       mToken <- lift $ gets sTomatoesToken
       case mToken of
         Nothing -> return ()
         Just token -> getInputLine "Tags: " >>= validateTags token
       finishedPomodoroMessage >>= outputStrLn
+      execute (Right StartPause)
+execute (Right StartPause) =
+    handle interruptHandler $ withInterrupt runPomodoro
+  where
+    oneSec = 1000000
+    oneMin = oneSec * 60
+    pauseSecs :: Num a => a
+    pauseSecs = 5 * 60
+    isInitialState InitialState = True
+    isInitialState _ = False
+    runPomodoro = do
+      tTimerState <- lift $ gets sTimerState
       liftIO . atomically . modifyTVar tTimerState $ const PauseRunning
       startTimer pauseSecs
       liftIO $ do
