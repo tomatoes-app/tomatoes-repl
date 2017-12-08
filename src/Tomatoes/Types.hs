@@ -1,26 +1,35 @@
 module Tomatoes.Types (
   Command(..),
+  Provider(..),
   availableCommands
 ) where
 
 import Data.List (intercalate)
 
 
-data Command = Exit | Help | GithubAuth | StartPomodoro | StartPause
-  deriving (Enum, Bounded)
+data Command = Exit | Help | Auth Provider | StartPomodoro | StartPause
 
 instance Show Command where
   show Exit = "exit (quit)"
   show Help = "help (h, ?)"
-  show GithubAuth = "auth github"
+  show (Auth provider) = "auth " ++ show provider
   show StartPomodoro = "pomodoro (p)"
   show StartPause = "pause"
+
+
+data Provider = Github
+
+instance Show Provider where
+  show Github = "github"
 
 
 -- | Return a string with all available commands
 availableCommands :: String
 availableCommands = intercalate ", " . map show $ commands
   where
-    commands :: [Command]
-    -- Note: commands after `StartPomodoro` are no available from the CLI
-    commands = [minBound..StartPomodoro]
+    commands = [
+        Exit,
+        Help,
+        Auth Github,
+        StartPomodoro
+      ]

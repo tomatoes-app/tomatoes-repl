@@ -39,8 +39,8 @@ import System.Process (createProcess, proc, std_err, StdStream(NoStream),
 import Tomatoes.Client (CreateSessionResponse(CreateSessionResponse),
   createSession, createTomato, tuName, getUser, TomatoesUser)
 import Tomatoes.Parser (commandParser)
-import Tomatoes.Types (Command(Exit, Help, GithubAuth, StartPomodoro,
-  StartPause), availableCommands)
+import Tomatoes.Types (Command(Exit, Help, Auth, StartPomodoro, StartPause),
+  Provider(Github), availableCommands)
 
 
 -- | The CLI state.
@@ -174,7 +174,7 @@ execute Help = do
   outputStrLn $ "Available commands: " ++ availableCommands
   outputStrLn "TODO: put a more detailed description for each command..."
   outputStr $ setSGRCode [Reset]
-execute GithubAuth = do
+execute (Auth Github) = do
   mGithubToken <- getPassword (Just '*') "GitHub token: "
   case mGithubToken of
     Nothing -> outputStrLn "Error: missing input"
