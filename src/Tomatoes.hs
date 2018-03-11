@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Tomatoes (
-  cli,
+  repl,
   getInitialState
 ) where
 
@@ -43,8 +43,8 @@ import Tomatoes.Types (Command(Exit, Help, Auth, StartPomodoro, StartPause),
   Provider(Github), availableCommands)
 
 
--- | The CLI state.
-data TomatoesCLIState = TomatoesCLIState {
+-- | The REPL state.
+data TomatoesREPLState = TomatoesREPLState {
     sTomatoesToken :: Maybe ByteString,
     sTomatoesUser :: Maybe TomatoesUser,
     sCols :: Int,
@@ -54,14 +54,14 @@ data TomatoesCLIState = TomatoesCLIState {
   }
 
 -- define an explicit show instance because manager doesn't implement it
-instance Show TomatoesCLIState where
-  show (TomatoesCLIState tomatoesToken mUser cols tomatoesCount _ _) =
+instance Show TomatoesREPLState where
+  show (TomatoesREPLState tomatoesToken mUser cols tomatoesCount _ _) =
        "Tomatoes API token: " ++ maybe "N/A" (const "***") tomatoesToken
     ++ ", user: " ++ show mUser
     ++ ", cols: " ++ show cols
     ++ ", tomatoes: " ++ show tomatoesCount
 
-type TomatoesT = InputT (StateT TomatoesCLIState IO)
+type TomatoesT = InputT (StateT TomatoesREPLState IO)
 
 
 data TimerState =
@@ -87,9 +87,9 @@ pomodoroTime :: FormatTime t => t -> String
 pomodoroTime = formatTime defaultTimeLocale "%M:%S"
 
 
--- | Reads a configuration file and starts the Tomatoes CLI.
-cli :: IO ()
-cli = do
+-- | Reads a configuration file and starts the Tomatoes REPL.
+repl :: IO ()
+repl = do
     initialState <- getInitialState
     -- TODO: add completion function, see
     -- https://downloads.haskell.org/~ghc/8.2.1/docs/html/libraries/haskeline-0.7.4.0/System-Console-Haskeline-Completion.html
@@ -113,13 +113,13 @@ cli = do
           loop
 
 
--- | Generates the initial state of the CLI. It tries to read a Tomatoes API
+-- | Generates the initial state of the REPL. It tries to read a Tomatoes API
 -- token from a `.tomatoes` file in the `$HOME` directory.
-getInitialState :: IO TomatoesCLIState
+getInitialState :: IO TomatoesREPLState
 getInitialState = do
     mToken <- readConfig
     manager <- newManager defaultManagerSettings
-    TomatoesCLIState
+    TomatoesREPLState
       <$> pure mToken
       <*> findUser manager mToken
       -- TODO: read the COLUMNS env and set it as a maximum value
