@@ -2,7 +2,7 @@ name:                tomatoes-repl
 version:             0.1.0.0
 synopsis:            Initial project template from stack
 description:         Please see README.md
-homepage:            https://github.com/potomak/tomatoes-repl#readme
+homepage:            https://github.com/tomatoes-app/tomatoes-repl#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Giovanni Cappellotto
@@ -56,4 +56,4 @@ test-suite tomatoes-repl-test
 
 source-repository head
   type:     git
-  location: https://github.com/potomak/tomatoes-repl
+  location: https://github.com/tomatoes-app/tomatoes-repl
