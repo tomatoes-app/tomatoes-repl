@@ -1,6 +1,6 @@
 name:                tomatoes-repl
 version:             0.1.0.0
-synopsis:            Initial project template from stack
+synopsis:            A REPL to interact with Tomatoes API
 description:         Please see README.md
 homepage:            https://github.com/tomatoes-app/tomatoes-repl#readme
 license:             BSD3
